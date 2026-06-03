@@ -61,3 +61,8 @@ Recommended COPR settings:
 - Spec File: `tsukimi.spec`
 - Clone URL: this Git repository
 - Chroot: Fedora 44+ (`gtk4 >= 4.22`, `libadwaita >= 1.8`)
+
+When the selected SCM checkout points at an exact Git tag such as `v26.6.1`,
+`.copr/Makefile` automatically converts that tag into the RPM version
+`26.6.1`. If the checkout is not exactly on a tag, it falls back to the
+version declared in `Cargo.toml`.

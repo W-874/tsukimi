@@ -1,5 +1,8 @@
+%global fallback_version 26.6.2
+%global pkg_version %{?version_from_tag:%{version_from_tag}}%{!?version_from_tag:%{fallback_version}}
+
 Name:           tsukimi
-Version:        26.6.2
+Version:        %{pkg_version}
 Release:        %autorelease
 Summary:        GTK4 Jellyfin client for Linux
 
