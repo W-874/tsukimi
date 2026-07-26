@@ -1,10 +1,11 @@
 use super::{
-    episode_switcher::EpisodeButton,
-    fix::ScrolledWindowFixExt,
-    hortu_scrolled::{
-        SHOW_BUTTON_ANIMATION_DURATION,
-        UnifySize,
+    episode_switcher::{
+        EpisodeButton,
+        EpisodeSwitcher,
     },
+    fix::ScrolledWindowFixExt,
+    hor_controls::HorControlsExt,
+    hortu_scrolled::UnifySize,
     item_utils::*,
     song_widget::format_duration,
     utils::{
@@ -39,7 +40,6 @@ use crate::{
         fetch_with_cache,
         get_image_with_cache,
         spawn,
-        spawn_g_timeout,
         spawn_tokio,
     },
 };
@@ -65,6 +65,7 @@ use gtk::{
 
 pub(crate) mod imp {
     use std::cell::{
+        Cell,
         OnceCell,
         RefCell,
     };
@@ -88,6 +89,7 @@ pub(crate) mod imp {
             widgets::{
                 EpisodeSwitcher,
                 fix::ScrolledWindowFixExt,
+                hor_controls::HorControlsExt,
                 horbu_scrolled::HorbuScrolled,
                 hortu_scrolled::HortuScrolled,
                 item_actionbox::ItemActionsBox,
@@ -206,10 +208,11 @@ pub(crate) mod imp {
         #[template_child]
         pub episode_switcher: TemplateChild<EpisodeSwitcher>,
 
-        pub show_button_animation: OnceCell<adw::TimedAnimation>,
-        pub hide_button_animation: OnceCell<adw::TimedAnimation>,
-
-        pub season_id: RefCell<Option<String>>,
+        pub show_left_animation: OnceCell<adw::TimedAnimation>,
+        pub hide_left_animation: OnceCell<adw::TimedAnimation>,
+        pub show_right_animation: OnceCell<adw::TimedAnimation>,
+        pub hide_right_animation: OnceCell<adw::TimedAnimation>,
+        pub is_hovering: Cell<bool>,
 
         #[property(get, set, nullable)]
         pub current_item: RefCell<Option<TuItem>>,
@@ -270,6 +273,7 @@ pub(crate) mod imp {
             self.itemlist.set_factory(Some(
                 gtk::SignalListItemFactory::new().tu_overview_item(ViewGroup::EpisodesView),
             ));
+            self.obj().connect_scroll_controls();
 
             let item = self.obj().item();
 
@@ -328,28 +332,30 @@ impl ItemPage {
         if type_ == "Series" {
             let series_id = item.id();
 
-            spawn(glib::clone!(
-                #[weak(rename_to = obj)]
-                self,
-                #[strong]
-                series_id,
-                async move {
-                    let Some(intro) = obj.set_shows_next_up(&series_id).await else {
-                        obj.imp()
-                            .buttoncontent
-                            .set_label(&gettext("Select an episode"));
-                        return;
-                    };
-                    obj.set_intro::<false>(&intro).await;
-                }
-            ));
+            if let Some(item) = self.set_shows_next_up(&series_id).await {
+                // ensure current_item available before season episodes load
+                self.set_current_item(Some(&item));
+                spawn(glib::clone!(
+                    #[weak(rename_to = obj)]
+                    self,
+                    #[strong]
+                    item,
+                    async move {
+                        obj.set_intro::<false>(&item).await;
+                    }
+                ));
+            } else {
+                let imp = self.imp();
+                imp.episode_line.set_text(&gettext("No episode selected"));
+                imp.buttoncontent.set_label(&gettext("Select an episode"));
+            }
 
             self.imp().actionbox.set_id(Some(series_id.to_owned()));
             self.setup_item(&series_id).await;
             self.setup_seasons(&series_id).await;
         } else if type_ == "Episode" && item.series_name().is_some() {
             let series_id = item.series_id().unwrap_or(item.id());
-
+            self.set_current_item(Some(&item));
             spawn(glib::clone!(
                 #[weak(rename_to = obj)]
                 self,
@@ -379,45 +385,27 @@ impl ItemPage {
         }
     }
 
-    pub async fn update_intro(&self) {
+    pub async fn update_intro(&self, current_item: TuItem) {
         let item = self.item();
 
-        if item.item_type() == "Series" || item.item_type() == "Episode" {
-            let series_id = item.series_id().unwrap_or(item.id());
-
-            spawn(glib::clone!(
-                #[weak(rename_to = obj)]
-                self,
-                #[strong]
-                series_id,
-                async move {
-                    let Some(intro) = obj.set_shows_next_up(&series_id).await else {
-                        return;
-                    };
-                    obj.set_intro::<false>(&intro).await;
+        let id = current_item.id();
+        let current_item =
+            match spawn_tokio(async move { JELLYFIN_CLIENT.get_item_info(&id).await }).await {
+                Ok(item) => TuItem::from_simple(item),
+                Err(e) => {
+                    self.toast(e.to_user_facing());
+                    current_item
                 }
-            ));
+            };
+
+        if item.item_type() == "Series" || item.item_type() == "Episode" {
+            self.set_intro::<false>(&current_item).await;
+            self.on_season_selected(None, self.imp().seasonlist.get())
+                .await;
         }
 
         if item.item_type() == "Video" || item.item_type() == "Movie" {
-            spawn(glib::clone!(
-                #[weak(rename_to = obj)]
-                self,
-                #[weak]
-                item,
-                async move {
-                    let id = item.id();
-                    match spawn_tokio(async move { JELLYFIN_CLIENT.get_item_info(&id).await }).await
-                    {
-                        Ok(item) => {
-                            obj.set_intro::<true>(&TuItem::from_simple(item)).await;
-                        }
-                        Err(e) => {
-                            obj.toast(e.to_user_facing());
-                        }
-                    }
-                }
-            ));
+            self.set_intro::<true>(&current_item).await;
         }
     }
 
@@ -482,55 +470,32 @@ impl ItemPage {
     #[template_callback]
     async fn on_season_selected(&self, _param: Option<glib::ParamSpec>, dropdown: gtk::DropDown) {
         let item = self.item();
-
         let item_type = item.item_type();
-
         if item_type != "Series" && item_type != "Episode" {
             return;
         }
-
-        let object = dropdown.selected_item();
-        let Some(season_name) = object.and_downcast_ref::<gtk::StringObject>() else {
-            return;
-        };
-
-        let season_name = season_name.string().to_string();
 
         let imp = self.imp();
         imp.episode_stack.set_visible_child_name("loading");
 
         let series_id = item.series_id().unwrap_or(item.id());
-
         let position = dropdown.selected();
-        let season_id = item.season_id();
 
-        let list = match (position, season_id.to_owned()) {
+        let current_item = self.current_item();
+        let current_season_id = current_item.as_ref().and_then(|item| item.season_id());
+
+        let items = match (position, current_season_id) {
+            (0, None) => vec![],
             (0, Some(season_id)) => {
-                let season_id_clone = season_id.to_owned();
+                self.set_current_season(Some(season_id.to_owned()));
                 match spawn_tokio(async move {
                     JELLYFIN_CLIENT
-                        .get_episodes(&series_id, &season_id.to_string(), 0)
+                        .get_episodes_all(&series_id, &season_id)
                         .await
                 })
                 .await
                 {
-                    Ok(item) => {
-                        self.set_current_season(Some(season_id_clone));
-                        item
-                    }
-                    Err(e) => {
-                        self.toast(e.to_user_facing());
-                        return;
-                    }
-                }
-            }
-            (0, None) => {
-                match spawn_tokio(async move {
-                    JELLYFIN_CLIENT.get_continue_play_list(&series_id).await
-                })
-                .await
-                {
-                    Ok(item) => item,
+                    Ok(res) => res.items,
                     Err(e) => {
                         self.toast(e.to_user_facing());
                         return;
@@ -540,21 +505,20 @@ impl ItemPage {
             _ => {
                 let season_id = {
                     let season_list = imp.season_list_vec.borrow();
-                    let Some(season) = season_list.iter().find(|s| s.name == season_name) else {
+                    let Some(season) = season_list.get(position.saturating_sub(1) as usize) else {
                         return;
                     };
-                    self.imp().season_id.replace(Some(season.id.to_owned()));
+                    self.set_current_season(Some(season.id.to_owned()));
                     season.id.to_owned()
                 };
-
                 match spawn_tokio(async move {
                     JELLYFIN_CLIENT
-                        .get_episodes(&series_id, &season_id, 0)
+                        .get_episodes_all(&series_id, &season_id)
                         .await
                 })
                 .await
                 {
-                    Ok(list) => list,
+                    Ok(res) => res.items,
                     Err(e) => {
                         self.toast(e.to_user_facing());
                         return;
@@ -563,103 +527,131 @@ impl ItemPage {
             }
         };
 
-        let index = list
-            .items
-            .iter()
-            .position(|item| item.index_number == Some(self.item().index_number()))
-            .unwrap_or(0);
-
-        self.set_episode_list(list.items);
-
-        if position == 0 {
-            // itemlist need wait for property binding to scroll
-            spawn_g_timeout(glib::clone!(
-                #[weak]
-                imp,
-                async move {
-                    imp.itemlist
-                        .scroll_to(index as u32, ListScrollFlags::all(), None);
-                },
-            ));
+        let start_idx = if let Some(current_item) = current_item
+            && self.current_season() == current_item.season_id()
+        {
+            Self::search_episode_index(&items, &current_item)
+                .map(|_| {
+                    current_item.index_number().saturating_sub(1) as usize
+                        / EpisodeSwitcher::EPISODES_PER_GROUP
+                        * EpisodeSwitcher::EPISODES_PER_GROUP
+                })
+                .unwrap_or_default()
         } else {
-            self.imp().episode_switcher.load_from_n_items(
-                list.total_record_count as usize,
-                glib::clone!(
-                    #[weak(rename_to = obj)]
-                    self,
-                    move |btn| {
-                        spawn(glib::clone!(
-                            #[weak]
-                            obj,
-                            #[weak]
-                            btn,
-                            async move {
-                                obj.on_episode_switcher_clicked(&btn).await;
-                            }
-                        ))
-                    }
-                ),
-            );
-        }
+            0
+        };
+
+        let max_episode_number = items
+            .last()
+            .and_then(|item| item.index_number)
+            .unwrap_or_default() as usize;
+
+        self.set_episode_list(items, start_idx);
+        self.imp().episode_switcher.load_from_range(
+            max_episode_number,
+            glib::clone!(
+                #[weak(rename_to = obj)]
+                self,
+                move |btn| {
+                    spawn(glib::clone!(
+                        #[weak]
+                        obj,
+                        #[weak]
+                        btn,
+                        async move {
+                            obj.on_episode_switcher_clicked(&btn).await;
+                        }
+                    ))
+                }
+            ),
+        );
     }
 
-    fn set_episode_list(&self, list: Vec<SimpleListItem>) {
+    fn set_episode_list(&self, list: Vec<SimpleListItem>, start_index: usize) {
+        let imp = self.imp();
+        imp.episode_list_vec.replace(list);
+        self.set_episode_list_range(start_index);
+    }
+
+    fn set_episode_list_range(&self, start_index: usize) {
         let imp = self.imp();
         let store_model = imp.selection.model();
         let Some(store) = store_model.and_downcast_ref::<gio::ListStore>() else {
             return;
         };
-
-        store.remove_all();
-
+        let list = imp.episode_list_vec.borrow();
         if list.is_empty() {
             imp.episode_stack.set_visible_child_name("fallback");
             return;
         }
+        let (start_episode, end_episode) = (
+            start_index as u32 + 1,
+            start_index as u32 + EpisodeSwitcher::EPISODES_PER_GROUP as u32,
+        );
+        let (left, right) = (
+            list.partition_point(|item| {
+                item.index_number
+                    .expect("index_number should be present in SimpleListItem")
+                    < start_episode
+            }),
+            list.partition_point(|item| {
+                item.index_number
+                    .expect("index_number should be present in SimpleListItem")
+                    <= end_episode
+            }),
+        );
+        let slice = &list[left..right];
+        let scroll_to = match self.current_item() {
+            None => None,
+            Some(item) => {
+                let (season_id, index_number) = (item.season_id(), item.index_number());
+                if self.current_season() != season_id
+                    || index_number < start_episode
+                    || index_number > end_episode
+                {
+                    None
+                } else {
+                    Self::search_episode_index(slice, &item)
+                }
+            }
+        }
+        .or_else(|| {
+            // If the current item is not in this range, reset the list to its first item.
+            (!self.is_at_lower() || imp.selection.selected() != 0).then_some(0)
+        });
 
-        let items = list
+        let items = slice
             .iter()
             .map(|item| TuObject::from_simple(item.to_owned()))
             .collect::<Vec<_>>();
-
-        store.extend_from_slice(&items);
-
-        imp.episode_list_vec.replace(list);
+        store.splice(0, store.n_items(), &items);
         imp.episode_stack.set_visible_child_name("view");
+
+        if let Some(scroll_index) = scroll_to {
+            let itemlist = imp.itemlist.get();
+            // Wait one frame so GtkListView can allocate rows before scrolling
+            itemlist.add_tick_callback(move |itemlist, _| {
+                let itemlist = itemlist.clone();
+                glib::idle_add_local_once(move || {
+                    itemlist.scroll_to(scroll_index as u32, ListScrollFlags::all(), None);
+                });
+                glib::ControlFlow::Break
+            });
+        }
+    }
+
+    fn search_episode_index(list: &[SimpleListItem], current_item: &TuItem) -> Option<usize> {
+        let index_number = current_item.index_number();
+        list.binary_search_by_key(&index_number, |item| {
+            item.index_number
+                .expect("index_number should be present in SimpleListItem")
+        })
+        .ok()
     }
 
     async fn on_episode_switcher_clicked(&self, btn: &EpisodeButton) {
-        let imp = self.imp();
-
         let start_index = btn.start_index();
-        let item = self.item();
-        let series_id = item.series_id().unwrap_or(item.id());
-
-        let Some(season_id) =
-            self.current_season().or(item
-                .season_id()
-                .or(self.imp().season_id.borrow().to_owned()))
-        else {
-            return;
-        };
-
-        imp.episode_stack.set_visible_child_name("loading");
-
-        let list = match spawn_tokio(async move {
-            JELLYFIN_CLIENT
-                .get_episodes(&series_id, &season_id, start_index)
-                .await
-        })
-        .await
-        {
-            Ok(list) => list,
-            Err(e) => {
-                self.toast(e.to_user_facing());
-                return;
-            }
-        };
-
-        self.set_episode_list(list.items);
+        self.set_episode_list_range(start_index as usize);
     }
 
     async fn set_shows_next_up(&self, id: &str) -> Option<TuItem> {
@@ -741,9 +733,9 @@ impl ItemPage {
 
                 let dl: std::cell::Ref<DropdownList> = entry.borrow();
                 let selected = &dl.id;
-                for _i in 0..sstore.n_items() {
-                    sstore.remove(0);
-                }
+
+                let mut objects = Vec::new();
+                let mut subtitle_choice = None;
                 for media in &media_sources {
                     if selected.as_deref().is_some_and(|s| s == media.id) {
                         let mut lang_list = Vec::new();
@@ -763,22 +755,24 @@ impl ItemPage {
 
                                 lang_list
                                     .push((stream.index, dl.line1.to_owned().unwrap_or_default()));
-                                let object = glib::BoxedAnyObject::new(dl);
-                                sstore.append(&object);
+                                objects.push(glib::BoxedAnyObject::new(dl));
                             }
                         }
 
-                        if let Some(u) = make_subtitle_version_choice(lang_list) {
-                            subdropdown.set_selected(u.1 as u32);
-                        }
+                        subtitle_choice = make_subtitle_version_choice(lang_list);
                         break;
                     }
+                }
+                sstore.splice(0, sstore.n_items(), &objects);
+                if let Some(u) = subtitle_choice {
+                    subdropdown.set_selected(u.1 as u32);
                 }
 
                 imp.video_version_matcher.replace(dl.line1.to_owned());
             }
         ));
 
+        let mut objects = Vec::new();
         for media in &playbackinfo.media_sources {
             let line2 = media
                 .bit_rate
@@ -796,9 +790,10 @@ impl ItemPage {
             };
 
             v_dl.push(dl.line1.to_owned().unwrap_or_default());
-            let object = glib::BoxedAnyObject::new(dl);
-            vstore.append(&object);
+            objects.push(glib::BoxedAnyObject::new(dl));
         }
+
+        vstore.extend_from_slice(&objects);
 
         if let Some(matcher) = matcher {
             if let Some(p) = make_video_version_choice_from_matcher(v_dl, &matcher) {
@@ -879,7 +874,11 @@ impl ItemPage {
                         .iter()
                         .map(|season| season.name.as_str())
                         .collect::<Vec<_>>();
-                    season_list_store.splice(0, season_list_store.n_items(), &names);
+                    season_list_store.splice(
+                        1,
+                        season_list_store.n_items().saturating_sub(1),
+                        &names,
+                    );
                     imp.seasonshortu.set_items(season_list.to_owned());
                     imp.season_list_vec.replace(season_list);
                     self.on_season_selected(None, imp.seasonlist.get()).await;
@@ -956,11 +955,11 @@ impl ItemPage {
                             }
                             obj.imp().line2.get().set_text(&str);
 
-                            if let Some(taglines) = item.taglines {
-                                if let Some(tagline) = taglines.first() {
-                                    obj.imp().tagline.set_text(tagline);
-                                    obj.imp().tagline.set_visible(true);
-                                }
+                            if let Some(taglines) = item.taglines
+                                && let Some(tagline) = taglines.first()
+                            {
+                                obj.imp().tagline.set_text(tagline);
+                                obj.imp().tagline.set_visible(true);
                             }
                         }
                         if let Some(links) = item.external_urls {
@@ -981,10 +980,10 @@ impl ItemPage {
                         if let Some(image_tags) = item.backdrop_image_tags {
                             obj.add_backdrops(image_tags, &item.id).await;
                         }
-                        if let Some(part_count) = item.part_count {
-                            if part_count > 1 {
-                                obj.sets("Additional Parts", &item.id).await;
-                            }
+                        if let Some(part_count) = item.part_count
+                            && part_count > 1
+                        {
+                            obj.sets("Additional Parts", &item.id).await;
                         }
                         if let Some(ref user_data) = item.user_data {
                             let imp = obj.imp();
@@ -1288,87 +1287,24 @@ impl ItemPage {
             .play_media(Some(info), item, episode_list, matcher, start_seconds);
     }
 
-    fn set_control_opacity(&self, opacity: f64) {
-        let imp = self.imp();
-        imp.left_button.set_opacity(opacity);
-        imp.right_button.set_opacity(opacity);
-    }
-
-    fn are_controls_visible(&self) -> bool {
-        if self.hide_controls_animation().state() == adw::AnimationState::Playing {
-            return false;
-        }
-
-        self.imp().left_button.opacity() >= 0.68
-            || self.show_controls_animation().state() == adw::AnimationState::Playing
-    }
-
-    fn show_controls_animation(&self) -> &adw::TimedAnimation {
-        self.imp().show_button_animation.get_or_init(|| {
-            let target = adw::CallbackAnimationTarget::new(glib::clone!(
-                #[weak(rename_to = obj)]
-                self,
-                move |opacity| obj.set_control_opacity(opacity)
-            ));
-
-            adw::TimedAnimation::builder()
-                .duration(SHOW_BUTTON_ANIMATION_DURATION)
-                .widget(&self.imp().scrolled.get())
-                .target(&target)
-                .value_to(0.7)
-                .build()
-        })
-    }
-
-    fn hide_controls_animation(&self) -> &adw::TimedAnimation {
-        self.imp().hide_button_animation.get_or_init(|| {
-            let target = adw::CallbackAnimationTarget::new(glib::clone!(
-                #[weak(rename_to = obj)]
-                self,
-                move |opacity| obj.set_control_opacity(opacity)
-            ));
-
-            adw::TimedAnimation::builder()
-                .duration(SHOW_BUTTON_ANIMATION_DURATION)
-                .widget(&self.imp().scrolled.get())
-                .target(&target)
-                .value_to(0.)
-                .build()
-        })
-    }
-
     #[template_callback]
     fn on_rightbutton_clicked(&self) {
-        self.anime::<true>();
-    }
-
-    fn controls_opacity(&self) -> f64 {
-        self.imp().left_button.opacity()
+        self.scroll_controls_anime::<true>();
     }
 
     #[template_callback]
     fn on_enter_focus(&self) {
-        if !self.are_controls_visible() {
-            self.hide_controls_animation().pause();
-            self.show_controls_animation()
-                .set_value_from(self.controls_opacity());
-            self.show_controls_animation().play();
-        }
+        self.on_enter_scroll_controls();
     }
 
     #[template_callback]
     fn on_leave_focus(&self) {
-        if self.are_controls_visible() {
-            self.show_controls_animation().pause();
-            self.hide_controls_animation()
-                .set_value_from(self.controls_opacity());
-            self.hide_controls_animation().play();
-        }
+        self.on_leave_scroll_controls();
     }
 
     #[template_callback]
     fn on_leftbutton_clicked(&self) {
-        self.anime::<false>();
+        self.scroll_controls_anime::<false>();
     }
 
     #[template_callback]
@@ -1391,42 +1327,39 @@ impl ItemPage {
         let item = TuItem::from_simple(season.to_owned());
         item.activate(self);
     }
+}
 
-    fn anime<const R: bool>(&self) {
-        let scrolled = self.imp().scrolled.get();
-        let adj = scrolled.hadjustment();
-
-        let Some(clock) = scrolled.frame_clock() else {
-            return;
-        };
-
-        let start = adj.value();
-        let end = if R { start + 800.0 } else { start - 800.0 };
-
-        let start_time = clock.frame_time();
-        let end_time = start_time + 1000 * 400;
-
-        scrolled.add_tick_callback(move |_view, clock| {
-            let now = clock.frame_time();
-            if now < end_time && adj.value() != end {
-                let mut t = (now - start_time) as f64 / (end_time - start_time) as f64;
-                t = Self::ease_in_out_cubic(t);
-                adj.set_value(start + t * (end - start));
-                glib::ControlFlow::Continue
-            } else {
-                adj.set_value(end);
-                glib::ControlFlow::Break
-            }
-        });
+impl HorControlsExt for ItemPage {
+    fn scroll_widget(&self) -> gtk::ScrolledWindow {
+        self.imp().scrolled.get()
     }
 
-    fn ease_in_out_cubic(t: f64) -> f64 {
-        if t < 0.5 {
-            4.0 * t * t * t
-        } else {
-            let t = 2.0 * t - 2.0;
-            0.5 * t * t * t + 1.0
-        }
+    fn left_button(&self) -> gtk::Button {
+        self.imp().left_button.get()
+    }
+
+    fn right_button(&self) -> gtk::Button {
+        self.imp().right_button.get()
+    }
+
+    fn show_left_animation_cell(&self) -> &std::cell::OnceCell<adw::TimedAnimation> {
+        &self.imp().show_left_animation
+    }
+
+    fn hide_left_animation_cell(&self) -> &std::cell::OnceCell<adw::TimedAnimation> {
+        &self.imp().hide_left_animation
+    }
+
+    fn show_right_animation_cell(&self) -> &std::cell::OnceCell<adw::TimedAnimation> {
+        &self.imp().show_right_animation
+    }
+
+    fn hide_right_animation_cell(&self) -> &std::cell::OnceCell<adw::TimedAnimation> {
+        &self.imp().hide_right_animation
+    }
+
+    fn is_hovering(&self) -> &std::cell::Cell<bool> {
+        &self.imp().is_hovering
     }
 }
 

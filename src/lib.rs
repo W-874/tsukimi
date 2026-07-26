@@ -16,15 +16,8 @@ mod utils;
 pub mod client;
 
 pub use arg::Args;
-pub use config::GETTEXT_PACKAGE;
-use config::{
-    LOCALEDIR,
-    PKGDATADIR,
-    version,
-};
-use once_cell::sync::OnceCell;
-
 use clap::Parser;
+pub use config::*;
 use gettextrs::*;
 use gtk::prelude::*;
 
@@ -32,7 +25,10 @@ pub use ui::Window;
 
 pub use app::TsukimiApplication as Application;
 
-use crate::ui::widgets;
+use crate::{
+    client::runtime::runtime,
+    ui::widgets,
+};
 
 pub static USER_AGENT: LazyLock<String> =
     LazyLock::new(|| format!("{}/{} - {}", CLIENT_ID, version(), env::consts::OS));
@@ -42,18 +38,13 @@ pub const CLIENT_ID: &str = "Tsukimi";
 const APP_RESOURCE_PATH: &str = "/moe/tsuna/tsukimi";
 const GRESOURCE_FILE: &str = "tsukimi.gresource";
 
-pub fn locale_dir() -> &'static str {
-    static FLOCALEDIR: OnceCell<&'static str> = OnceCell::new();
-    FLOCALEDIR.get_or_init(|| LOCALEDIR)
-}
-
 pub fn run() -> gtk::glib::ExitCode {
     Args::parse().init();
+
     // Initialize gettext
     setlocale(LocaleCategory::LcAll, String::new());
     bind_textdomain_codeset(GETTEXT_PACKAGE, "UTF-8").expect("Failed to set textdomain codeset");
-    bindtextdomain(GETTEXT_PACKAGE, locale_dir())
-        .expect("Invalid argument passed to bindtextdomain");
+    bindtextdomain(GETTEXT_PACKAGE, LOCALEDIR).expect("Invalid argument passed to bindtextdomain");
 
     textdomain(GETTEXT_PACKAGE).expect("Invalid string passed to textdomain");
 
@@ -62,9 +53,9 @@ pub fn run() -> gtk::glib::ExitCode {
 
     widgets::init();
 
-    // Initialize the GTK application
     gtk::glib::set_application_name(CLIENT_ID);
 
+    let _tokio_guard = runtime().enter();
     Application::new().run_with_args::<&str>(&[])
 }
 

@@ -7,6 +7,7 @@ use adw::subclass::prelude::{
 use gtk::{
     self,
     glib,
+    prelude::*,
 };
 use mpris_server::{
     LocalPlayerInterface,
@@ -41,12 +42,15 @@ mod track_list;
 
 impl MPVPage {
     pub async fn initialize_mpris(&self, app_id: &str) -> Result<()> {
+        if self.imp().mpris_server.get().is_some() {
+            return Err(anyhow::anyhow!("Mpris server already initialized"));
+        }
+
         let server = LocalServer::new_with_track_list(app_id, self.imp().obj().clone()).await?;
-        spawn(server.run());
-        self.imp()
-            .mpris_server
-            .set(server)
-            .map_err(|_| anyhow::anyhow!("Mpris server already initialized"))?;
+
+        // It cant panic here
+        self.imp().mpris_server.set(server).unwrap();
+        spawn(self.imp().mpris_server.get().unwrap().run());
         Ok(())
     }
 
@@ -258,7 +262,7 @@ impl LocalPlayerInterface for MPVPage {
     }
 
     async fn rate(&self) -> fdo::Result<PlaybackRate> {
-        Ok(self.imp().speed_spin.value())
+        Ok(self.imp().playback_speed_adj.value())
     }
 
     async fn set_rate(&self, rate: PlaybackRate) -> zbus::Result<()> {
@@ -285,9 +289,9 @@ impl LocalPlayerInterface for MPVPage {
     }
 
     async fn set_volume(&self, volume: Volume) -> zbus::Result<()> {
-        self.imp()
-            .volume_spin
-            .set_value((volume.clamp(0.0, 1.0) * 100.0).round());
+        let volume = (volume.clamp(0.0, 1.0) * 100.0).round();
+        self.imp().volume_adj.set_value(volume);
+        self.imp().video.set_volume(volume as i64);
         Ok(())
     }
 

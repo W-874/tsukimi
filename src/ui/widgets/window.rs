@@ -1,6 +1,3 @@
-#![allow(deprecated)]
-// FIXME: replace GtkShortcutsWindow when the replacement is appeared on libadwaita
-
 use std::path::PathBuf;
 
 use adw::prelude::*;
@@ -574,10 +571,11 @@ impl Window {
     }
 
     pub fn refresh_homepage_if_needed(&self) {
-        if self.now_page_tag() == Some("mainpage".into()) && SETTINGS.is_refresh() {
-            if let Some(homepage) = self.imp().homepage.child().and_downcast_ref::<HomePage>() {
-                homepage.update(false);
-            }
+        if self.now_page_tag() == Some("mainpage".into())
+            && SETTINGS.is_refresh()
+            && let Some(homepage) = self.imp().homepage.child().and_downcast_ref::<HomePage>()
+        {
+            homepage.update(false);
         }
     }
 
@@ -646,10 +644,10 @@ impl Window {
         backgroundstack.add_child(&pic);
         backgroundstack.set_visible_child(&pic);
 
-        if backgroundstack.observe_children().n_items() > 2 {
-            if let Some(child) = backgroundstack.first_child() {
-                backgroundstack.remove(&child);
-            }
+        if backgroundstack.observe_children().n_items() > 2
+            && let Some(child) = backgroundstack.first_child()
+        {
+            backgroundstack.remove(&child);
         }
     }
 
@@ -897,28 +895,32 @@ impl Window {
     }
 
     pub fn set_shortcuts(&self) {
-        let Some(window) =
-            gtk::Builder::from_resource("/moe/tsuna/tsukimi/ui/mpv_shortcuts_window.ui")
-                .object::<gtk::ShortcutsWindow>("mpv_shortcuts")
-        else {
-            eprintln!("Failed to load shortcuts window");
-            return;
-        };
-        self.set_help_overlay(Some(&window));
+        let shortcuts_action = gtk::gio::ActionEntry::builder("show-help-overlay")
+            .activate(|window: &Window, _, _| {
+                let Some(dialog) =
+                    gtk::Builder::from_resource("/moe/tsuna/tsukimi/ui/mpv_shortcuts_window.ui")
+                        .object::<adw::ShortcutsDialog>("shortcuts_dialog")
+                else {
+                    eprintln!("Failed to load shortcuts dialog");
+                    return;
+                };
+                dialog.present(Some(window));
+            })
+            .build();
+        self.add_action_entries([shortcuts_action]);
     }
 
-    pub fn set_mpv_playlist(&self, episode_list: &Vec<TuItem>) {
+    pub fn set_mpv_playlist(&self, episode_list: &[TuItem]) {
         let model = self.imp().mpv_playlist_selection.model();
         let Some(store) = model.and_downcast_ref::<gio::ListStore>() else {
             return;
         };
+        let items = episode_list
+            .iter()
+            .map(|item| TuObject::new(item.to_owned()))
+            .collect::<Vec<_>>();
 
-        store.remove_all();
-
-        for item in episode_list {
-            let object = TuObject::new(item.to_owned());
-            store.append(&object);
-        }
+        store.splice(0, store.n_items(), &items);
     }
 
     pub fn view_playlist(&self) {
@@ -965,13 +967,12 @@ impl Window {
         }
     }
 
-    pub async fn update_item_page(&self) {
+    pub async fn update_item_page(&self, current_item: TuItem) {
         let nav = self.imp().mainview.visible_page();
         let Some(now_page) = nav.and_downcast_ref::<ItemPage>() else {
             return;
         };
-
-        now_page.update_intro().await;
+        now_page.update_intro(current_item).await;
     }
 
     pub fn close_on_error(&self, description: String) {
@@ -1012,6 +1013,8 @@ impl Window {
                     .website("https://github.com/tsukinaha/tsukimi")
                     .application_icon("moe.tsuna.tsukimi")
                     .license_type(gtk::License::Gpl30)
+                    .copyright("© MutsumiUniverse")
+                    .issue_url("https://github.com/tsukinaha/tsukimi/issues")
                     .build();
                 about.set_debug_info(&format!(
                     "Version: {}\nArchitecture: {}\nGTK Version: {}.{}.{}\nADW Version: {}.{}.{}\nOS: {}\n",
@@ -1030,6 +1033,7 @@ impl Window {
                     Some("Special Thanks"),
                     &["Qound", "Eikano"],
                 );
+                about.add_other_app("io.github.mutsumiuniverse.fughetta", "Fughetta", "A GTK4 frontend for MPV, embedded by wl-proxy, written in Rust.");
                 about.present(Some(window));
             })
             .build();

@@ -4,7 +4,7 @@ use gtk::{
     subclass::prelude::*,
 };
 
-use super::tsukimi_mpv::ChapterList;
+use mutsumi::*;
 
 mod imp {
     use std::cell::Cell;
@@ -15,13 +15,13 @@ mod imp {
         subclass::prelude::*,
     };
 
-    use crate::ui::mpv::mpvglarea::MPVGLArea;
+    use crate::ui::mpv::sink::MPVPlaySink;
 
     #[derive(Default, glib::Properties)]
     #[properties(wrapper_type = super::VideoScale)]
     pub struct VideoScale {
         #[property(get, set = Self::set_player, explicit_notify, nullable)]
-        pub player: glib::WeakRef<MPVGLArea>,
+        pub player: glib::WeakRef<MPVPlaySink>,
 
         pub is_dragging: Cell<bool>,
     }
@@ -47,10 +47,10 @@ mod imp {
                 .observe_controllers()
                 .into_iter()
                 .for_each(|collection| {
-                    if let Ok(event) = collection {
-                        if event.type_() == gtk::GestureClick::static_type() {
-                            gesture = event.downcast::<gtk::GestureClick>().unwrap();
-                        }
+                    if let Ok(event) = collection
+                        && event.type_() == gtk::GestureClick::static_type()
+                    {
+                        gesture = event.downcast::<gtk::GestureClick>().unwrap();
                     }
                 });
 
@@ -76,7 +76,7 @@ mod imp {
     impl ScaleImpl for VideoScale {}
 
     impl VideoScale {
-        fn set_player(&self, player: Option<MPVGLArea>) {
+        fn set_player(&self, player: Option<MPVPlaySink>) {
             if self.player.upgrade() == player {
                 return;
             }

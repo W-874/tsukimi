@@ -266,15 +266,21 @@
                           </object>
                         </child>
                         <child type="overlay">
-                          <object class="GtkBox" id="logobox">
+                          <object class="AdwClamp">
+                            <property name="maximum-size">400</property>
+                            <property name="tightening-threshold">400</property>
                             <property name="margin-start">30</property>
                             <property name="margin-top">15</property>
-                            <property name="height-request">150</property>
-                            <property name="valign">start</property>
                             <property name="halign">start</property>
-                            <style>
-                              <class name="logo" />
-                            </style>
+                            <property name="valign">start</property>
+                            <child>
+                              <object class="GtkBox" id="logobox">
+                                <property name="height-request">150</property>
+                                <style>
+                                  <class name="logo" />
+                                </style>
+                              </object>
+                            </child>
                           </object>
                         </child>
                       </object>
@@ -321,6 +327,7 @@
                     <child>
                       <object class="AdwBin" id="episode_list_bin">
                         <property name="vexpand-set">True</property>
+                        <property name="height-request">240</property>
                         <property name="visible">False</property>
                         <child>
                           <object class="GtkStack" id="episode_stack">
@@ -436,7 +443,6 @@
                     <child>
                       <object class="GtkBox">
                         <property name="orientation">vertical</property>
-                        <property name="spacing">9</property>
                         <property name="margin-bottom">18</property>
                         <child>
                           <object class="HortuScrolled" id="includehortu">

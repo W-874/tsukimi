@@ -36,6 +36,7 @@
                       <item>Norwegian Bokmål</item>
                       <item>Portuguese</item>
                       <item>Français</item>
+                      <item>Русский</item>
                     </items>
                   </object>
                 </property>
@@ -61,6 +62,7 @@
                       <item>Norwegian Bokmål</item>
                       <item>Portuguese</item>
                       <item>Français</item>
+                      <item>Русский</item>
                     </items>
                   </object>
                 </property>
@@ -70,7 +72,18 @@
         </child>
         <child>
           <object class="AdwPreferencesGroup">
-            <property name="title" translatable="yes">Appearence</property>
+            <property name="title" translatable="yes">Playback</property>
+            <child>
+              <object class="AdwSwitchRow" id="auto_skip_intro_outro_control">
+                <property name="title" translatable="yes">Automatically Skip Intros and Outros</property>
+                <property name="subtitle" translatable="yes">Jellyfin only</property>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child>
+          <object class="AdwPreferencesGroup">
+            <property name="title" translatable="yes">Appearance</property>
             <child>
               <object class="AdwSwitchRow" id="custom_accent_color_control">
                 <property name="title" translatable="yes">Use Custom Accent Color</property>
@@ -98,13 +111,57 @@
                 <property name="title" translatable="yes">Hide Sidebar</property>
               </object>
             </child>
-            <child>
-              <object class="AdwSwitchRow" id="selectlastcontrol">
-                <property name="title" translatable="yes">Auto Select Last Server</property>
-              </object>
-            </child>
-          </object>
-        </child>
+	            <child>
+	              <object class="AdwSwitchRow" id="selectlastcontrol">
+	                <property name="title" translatable="yes">Auto Select Last Server</property>
+	              </object>
+	            </child>
+	            <child>
+	              <object class="AdwActionRow">
+	                <property name="title" translatable="yes">Text Display</property>
+	                <child type="suffix">
+	                  <object class="AdwToggleGroup" id="text_display_group">
+	                    <property name="valign">center</property>
+	                    <child>
+	                      <object class="AdwToggle">
+	                        <property name="label" translatable="yes">Compact</property>
+	                        <property name="name">compact</property>
+	                      </object>
+	                    </child>
+	                    <child>
+	                      <object class="AdwToggle">
+	                        <property name="label" translatable="yes">Full</property>
+	                        <property name="name">full</property>
+	                      </object>
+	                    </child>
+	                  </object>
+	                </child>
+	              </object>
+	            </child>
+	            <child>
+	              <object class="AdwActionRow">
+	                <property name="title" translatable="yes">Card Style</property>
+	                <child type="suffix">
+	                  <object class="AdwToggleGroup" id="card_style_group">
+	                    <property name="valign">center</property>
+	                    <child>
+	                      <object class="AdwToggle">
+	                        <property name="label" translatable="yes">Integrated</property>
+	                        <property name="name">integrated</property>
+	                      </object>
+	                    </child>
+	                    <child>
+	                      <object class="AdwToggle">
+	                        <property name="label" translatable="yes">Separated</property>
+	                        <property name="name">separated</property>
+	                      </object>
+	                    </child>
+	                  </object>
+	                </child>
+	              </object>
+	            </child>
+	          </object>
+	        </child>
         <child>
           <object class="AdwPreferencesGroup">
             <property name="title" translatable="yes">Home Page</property>
@@ -314,6 +371,53 @@
             <property name="title" translatable="yes">Video Player</property>
             <property name="description" translatable="yes">Requires restart</property>
             <child>
+              <object class="AdwPreferencesGroup">
+                <property name="margin-top">24</property>
+                <property name="description" translatable="yes">GPU Context</property>
+                <child>
+                  <object class="AdwActionRow">
+                    <property name="title" translatable="yes">Auto</property>
+                    <property name="activatable-widget">gpu_context_group</property>
+                    <child type="prefix">
+                      <object class="GtkCheckButton" id="gpu_context_group">
+                        <property name="valign">center</property>
+                        <property name="action-name">mpv.gpu-context</property>
+                        <property name="action-target">0</property>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+                <child>
+                  <object class="AdwActionRow">
+                    <property name="title">waylandvk</property>
+                    <property name="activatable-widget">gpu_context_group2</property>
+                    <child type="prefix">
+                      <object class="GtkCheckButton" id="gpu_context_group2">
+                        <property name="valign">center</property>
+                        <property name="group">gpu_context_group</property>
+                        <property name="action-name">mpv.gpu-context</property>
+                        <property name="action-target">1</property>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+                <child>
+                  <object class="AdwActionRow">
+                    <property name="title">wayland (DRM_PRIME buffer)</property>
+                    <property name="activatable-widget">gpu_context_group3</property>
+                    <child type="prefix">
+                      <object class="GtkCheckButton" id="gpu_context_group3">
+                        <property name="valign">center</property>
+                        <property name="group">gpu_context_group</property>
+                        <property name="action-name">mpv.gpu-context</property>
+                        <property name="action-target">2</property>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+              </object>
+            </child>
+            <child>
               <object class="AdwSwitchRow" id="config_switchrow">
                 <property name="title" translatable="yes">Enable external config</property>
               </object>
@@ -337,60 +441,6 @@
                     <style>
                       <class name="flat" />
                     </style>
-                  </object>
-                </child>
-              </object>
-            </child>
-          </object>
-        </child>
-      </object>
-    </child>
-    <child>
-      <object class="AdwPreferencesPage">
-        <property name="title" translatable="yes">Others</property>
-        <property name="name">Others</property>
-        <property name="icon-name">preferences-other-symbolic</property>
-        <child>
-          <object class="AdwPreferencesGroup">
-            <property name="title" translatable="yes">Video Output</property>
-            <property name="description" translatable="yes">Only for debugging</property>
-            <child>
-              <object class="AdwActionRow">
-                <property name="title" translatable="yes">libmpv (default)</property>
-                <property name="activatable-widget">vo_group</property>
-                <child type="prefix">
-                  <object class="GtkCheckButton" id="vo_group">
-                    <property name="valign">center</property>
-                    <property name="action-name">setting.video-output</property>
-                    <property name="action-target">0</property>
-                  </object>
-                </child>
-              </object>
-            </child>
-            <child>
-              <object class="AdwActionRow">
-                <property name="title">gpu-next</property>
-                <property name="activatable-widget">vo_group2</property>
-                <child type="prefix">
-                  <object class="GtkCheckButton" id="vo_group2">
-                    <property name="valign">center</property>
-                    <property name="group">vo_group</property>
-                    <property name="action-name">setting.video-output</property>
-                    <property name="action-target">1</property>
-                  </object>
-                </child>
-              </object>
-            </child>
-            <child>
-              <object class="AdwActionRow">
-                <property name="title">dmabuf-wayland</property>
-                <property name="activatable-widget">vo_group3</property>
-                <child type="prefix">
-                  <object class="GtkCheckButton" id="vo_group3">
-                    <property name="valign">center</property>
-                    <property name="group">vo_group</property>
-                    <property name="action-name">setting.video-output</property>
-                    <property name="action-target">2</property>
                   </object>
                 </child>
               </object>

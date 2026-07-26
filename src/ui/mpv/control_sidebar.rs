@@ -9,7 +9,6 @@ use gtk::{
     glib,
     template_callbacks,
 };
-use libmpv2::SetData;
 
 use super::options_matcher::{
     match_audio_channels,
@@ -27,15 +26,17 @@ mod imp {
     use gtk::glib;
 
     use super::*;
-    use crate::ui::mpv::mpvglarea::MPVGLArea;
+    use crate::ui::mpv::sink::MPVPlaySink;
 
     #[derive(Debug, Default, CompositeTemplate, glib::Properties)]
     #[template(resource = "/moe/tsuna/tsukimi/ui/mpv_control_sidebar.ui")]
     #[properties(wrapper_type = super::MPVControlSidebar)]
     pub struct MPVControlSidebar {
         #[property(get, set = Self::set_player, explicit_notify, nullable)]
-        pub player: glib::WeakRef<MPVGLArea>,
+        pub player: glib::WeakRef<MPVPlaySink>,
 
+        #[template_child]
+        pub playback_speed_adj: TemplateChild<gtk::Adjustment>,
         #[template_child]
         pub seek_forward_adj: TemplateChild<gtk::Adjustment>,
         #[template_child]
@@ -142,7 +143,7 @@ mod imp {
     impl NavigationPageImpl for MPVControlSidebar {}
 
     impl MPVControlSidebar {
-        fn set_player(&self, player: Option<MPVGLArea>) {
+        fn set_player(&self, player: Option<MPVPlaySink>) {
             if self.player.upgrade() == player {
                 return;
             }
@@ -173,7 +174,7 @@ impl MPVControlSidebar {
 
         let action_text = gio::ActionEntry::builder("text-justify")
             .parameter_type(Some(&i32::static_variant_type()))
-            .state(1.to_variant())
+            .state(SETTINGS.mpv_subtitle_justify().to_variant())
             .activate(glib::clone!(
                 #[weak(rename_to = obj)]
                 self,
@@ -189,6 +190,7 @@ impl MPVControlSidebar {
                         2 => obj.set_mpv_property("sub-justify", "right"),
                         _ => {}
                     }
+                    SETTINGS.set_int("mpv-subtitle-justify", parameter).unwrap();
                     action.set_state(&parameter.to_variant());
                 }
             ))
@@ -256,6 +258,18 @@ impl MPVControlSidebar {
             .set_font_desc(&gtk::pango::FontDescription::from_string(
                 &SETTINGS.mpv_subtitle_font(),
             ));
+        imp.sub_text_color.set_rgba(&rgba_from_settings(
+            SETTINGS.mpv_subtitle_text_color(),
+            gtk::gdk::RGBA::new(1.0, 1.0, 1.0, 1.0),
+        ));
+        imp.sub_border_color.set_rgba(&rgba_from_settings(
+            SETTINGS.mpv_subtitle_border_color(),
+            gtk::gdk::RGBA::new(0.0, 0.0, 0.0, 1.0),
+        ));
+        imp.sub_background_color.set_rgba(&rgba_from_settings(
+            SETTINGS.mpv_subtitle_background_color(),
+            gtk::gdk::RGBA::new(0.0, 0.0, 0.0, 0.0),
+        ));
         SETTINGS
             .bind(
                 "mpv-show-buffer-speed",
@@ -280,7 +294,55 @@ impl MPVControlSidebar {
             )
             .build();
         SETTINGS
+            .bind("mpv-subtitle-bold", &imp.sub_bold_toggle.get(), "active")
+            .build();
+        SETTINGS
+            .bind(
+                "mpv-subtitle-italic",
+                &imp.sub_italic_toggle.get(),
+                "active",
+            )
+            .build();
+        SETTINGS
+            .bind(
+                "mpv-subtitle-position",
+                &imp.sub_position_adj.get(),
+                "value",
+            )
+            .build();
+        SETTINGS
+            .bind("mpv-subtitle-size", &imp.sub_size_adj.get(), "value")
+            .build();
+        SETTINGS
             .bind("mpv-subtitle-scale", &imp.sub_scale_adj.get(), "value")
+            .build();
+        SETTINGS
+            .bind(
+                "mpv-subtitle-border-style",
+                &imp.sub_border_style_combo.get(),
+                "selected",
+            )
+            .build();
+        SETTINGS
+            .bind(
+                "mpv-subtitle-border-size",
+                &imp.sub_border_size_adj.get(),
+                "value",
+            )
+            .build();
+        SETTINGS
+            .bind(
+                "mpv-subtitle-shadow-offset",
+                &imp.sub_shadow_offset_adj.get(),
+                "value",
+            )
+            .build();
+        SETTINGS
+            .bind(
+                "mpv-subtitle-stretch-image-subs-to-screen",
+                &imp.stretch_image_subs_to_screen_switchrow.get(),
+                "active",
+            )
             .build();
         SETTINGS
             .bind(
@@ -293,10 +355,24 @@ impl MPVControlSidebar {
 
     pub fn set_mpv_property<V>(&self, property: &str, value: V)
     where
-        V: SetData + Send + 'static,
+        V: Into<mutsumi::MpvValue>,
     {
         if let Some(player) = self.player() {
             player.set_property(property, value)
+        }
+    }
+
+    pub fn set_playback_speed(&self, value: f64) {
+        let adj = &self.imp().playback_speed_adj;
+        if (adj.value() - value).abs() > f64::EPSILON {
+            adj.set_value(value);
+        }
+    }
+
+    #[template_callback]
+    pub fn on_playback_speed(&self, _param: glib::ParamSpec, spin: adw::SpinRow) {
+        if let Some(player) = self.player() {
+            player.set_speed(spin.value());
         }
     }
 
@@ -400,6 +476,7 @@ impl MPVControlSidebar {
     #[template_callback]
     pub fn on_sub_text_color(&self, _param: glib::ParamSpec, color: gtk::ColorDialogButton) {
         let rgba = color.rgba();
+        let _ = SETTINGS.set_mpv_subtitle_text_color(&rgba.to_string());
         self.set_mpv_property(
             "sub-color",
             rgba_to_mpv_color((rgba.red(), rgba.green(), rgba.blue(), rgba.alpha())),
@@ -409,6 +486,7 @@ impl MPVControlSidebar {
     #[template_callback]
     pub fn on_sub_border_color(&self, _param: glib::ParamSpec, color: gtk::ColorDialogButton) {
         let rgba = color.rgba();
+        let _ = SETTINGS.set_mpv_subtitle_border_color(&rgba.to_string());
         self.set_mpv_property(
             "sub-border-color",
             rgba_to_mpv_color((rgba.red(), rgba.green(), rgba.blue(), rgba.alpha())),
@@ -418,6 +496,7 @@ impl MPVControlSidebar {
     #[template_callback]
     pub fn on_sub_background_color(&self, _param: glib::ParamSpec, color: gtk::ColorDialogButton) {
         let rgba = color.rgba();
+        let _ = SETTINGS.set_mpv_subtitle_background_color(&rgba.to_string());
         self.set_mpv_property(
             "sub-back-color",
             rgba_to_mpv_color((rgba.red(), rgba.green(), rgba.blue(), rgba.alpha())),
@@ -467,6 +546,7 @@ impl MPVControlSidebar {
         imp.sub_scale_adj.set_value(1.0);
         imp.sub_font_button
             .set_font_desc(&gtk::pango::FontDescription::from_string(""));
+        let _ = self.activate_action("mpv.text-justify", Some(&1.to_variant()));
         imp.sub_border_style_combo.set_selected(0);
         imp.sub_border_size_adj.set_value(3.0);
         imp.sub_shadow_offset_adj.set_value(0.0);
@@ -570,6 +650,10 @@ impl MPVControlSidebar {
         imp.audio_offset_adj.set_value(0.0);
         imp.audio_channel_combo.set_selected(1);
     }
+}
+
+fn rgba_from_settings(value: String, default: gtk::gdk::RGBA) -> gtk::gdk::RGBA {
+    gtk::gdk::RGBA::parse(&value).unwrap_or(default)
 }
 
 fn rgba_to_mpv_color(rgba: (f32, f32, f32, f32)) -> String {

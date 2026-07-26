@@ -1,7 +1,4 @@
-use std::{
-    future::Future,
-    path::PathBuf,
-};
+use std::path::PathBuf;
 
 use anyhow::Result;
 use serde::{
@@ -43,7 +40,7 @@ where
     });
 }
 
-pub fn spawn_tokio_blocking_without_await<F>(fut: F)
+pub fn _spawn_tokio_blocking_without_await<F>(fut: F)
 where
     F: FnOnce() + Send + 'static,
 {

@@ -1,7 +1,7 @@
 project(
     'tsukimi',
     'rust',
-    version: '26.6.2',
+    version: '26.8.1',
     meson_version: '>= 1.1',
     default_options: ['warning_level=2', 'werror=false', 'buildtype=release'],
 )
@@ -69,6 +69,7 @@ dependency(
 find_program('xmllint', required: false)
 dependency('epoxy')
 dependency('mpv', version: '>=0.38')
+dependency('glycin-2', version: '>=2.0')
 
 dependency('gstreamer-1.0', version: '>= 1.16')
 dependency('gstreamer-base-1.0', version: '>= 1.16')

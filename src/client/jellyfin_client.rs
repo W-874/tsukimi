@@ -289,14 +289,14 @@ impl JellyfinClient {
             }
         };
 
-        let res_text = res.text().await?;
-        match serde_json::from_str(&res_text) {
+        let res_bytes = res.bytes().await?;
+        match serde_json::from_slice(&res_bytes) {
             Ok(json) => Ok(json),
             Err(e) => Err(anyhow!(
                 "Request Path: {}\nFailed parsing response to json {}: {}",
                 path,
                 e,
-                res_text
+                String::from_utf8_lossy(&res_bytes)
             )),
         }
     }
@@ -307,7 +307,7 @@ impl JellyfinClient {
         let request = self
             .prepare_request(Method::GET, path, params)?
             .header("If-None-Match", etag.unwrap_or_default());
-        let res = request.send().await?;
+        let res = self.send_request(request).await?;
         Ok(res)
     }
 
@@ -675,8 +675,10 @@ impl JellyfinClient {
 
         match self.image_request(id, image_type, tag, etag).await {
             Ok(response) => {
-                if response.status().is_redirection() {
+                if response.status() == reqwest::StatusCode::NOT_MODIFIED {
                     return Ok(path.to_string_lossy().to_string());
+                } else if response.status() == reqwest::StatusCode::NOT_FOUND {
+                    return Ok(String::new());
                 } else if !response.status().is_success() {
                     return Err(anyhow!("Failed to get image: {}", response.status()));
                 }
@@ -1226,7 +1228,6 @@ impl JellyfinClient {
             ("Recursive", "true"),
             ("IncludeItemTypes", "Movie,Series"),
             ("SortBy", "IsFavoriteOrLiked,Random"),
-            ("Recursive", "true"),
         ];
         self.request(&path, &params).await
     }
@@ -1281,7 +1282,6 @@ impl JellyfinClient {
             ("Recursive", "true"),
             ("IncludeItemTypes", "Playlist,BoxSet"),
             ("SortBy", "SortName"),
-            ("Recursive", "true"),
         ];
         self.request(&path, &params).await
     }

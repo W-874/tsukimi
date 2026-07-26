@@ -33,35 +33,54 @@ impl Settings {
     const KEY_LIST_SORT_ORDER: &'static str = "list-sort-order";
     const KEY_ACCENT_COLOR_CODE: &'static str = "accent-color-code";
     const KEY_USE_CUSTOM_ACCENT_COLOR: &'static str = "use-custom-accent-color";
+    const KEY_ITEM_TEXT_DISPLAY: &'static str = "item-text-display";
+    const KEY_ITEM_CARD_STYLE: &'static str = "item-card-style";
     const KEY_MUSIC_REPEAT_MODE: &'static str = "music-repeat-mode";
     const KEY_MPV_SEEK_FORWARD_STEP: &'static str = "mpv-seek-forward-step";
     const KEY_MPV_SEEK_BACKWARD_STEP: &'static str = "mpv-seek-backward-step";
     const KEY_MPV_CONFIG: &'static str = "mpv-config";
     const KEY_MPV_CACHE_SIZE: &'static str = "mpv-cache-size";
     const KEY_MPV_CACHE_TIME: &'static str = "mpv-cache-time";
+    const KEY_MPV_SUBTITLE_BOLD: &'static str = "mpv-subtitle-bold"; // bool
+    const KEY_MPV_SUBTITLE_ITALIC: &'static str = "mpv-subtitle-italic"; // bool
+    const KEY_MPV_SUBTITLE_JUSTIFY: &'static str = "mpv-subtitle-justify"; // i32
+    const KEY_MPV_SUBTITLE_POSITION: &'static str = "mpv-subtitle-position"; // i32
     const KEY_MPV_SUBTITLE_SIZE: &'static str = "mpv-subtitle-size"; // i32
+    const KEY_MPV_SUBTITLE_SCALE: &'static str = "mpv-subtitle-scale"; // f64
     const KEY_MPV_SUBTITLE_FONT: &'static str = "mpv-subtitle-font"; // String
+    const KEY_MPV_SUBTITLE_BORDER_STYLE: &'static str = "mpv-subtitle-border-style"; // i32
+    const KEY_MPV_SUBTITLE_BORDER_SIZE: &'static str = "mpv-subtitle-border-size"; // i32
+    const KEY_MPV_SUBTITLE_SHADOW_OFFSET: &'static str = "mpv-subtitle-shadow-offset"; // i32
+    const KEY_MPV_SUBTITLE_STRETCH_IMAGE_SUBS_TO_SCREEN: &'static str =
+        "mpv-subtitle-stretch-image-subs-to-screen"; // bool
+    const KEY_MPV_SUBTITLE_TEXT_COLOR: &'static str = "mpv-subtitle-text-color"; // String
+    const KEY_MPV_SUBTITLE_BORDER_COLOR: &'static str = "mpv-subtitle-border-color"; // String
+    const KEY_MPV_SUBTITLE_BACKGROUND_COLOR: &'static str = "mpv-subtitle-background-color"; // String
     const KEY_MPV_AUDIO_PREFERRED_LANG: &'static str = "mpv-audio-preferred-lang"; // i32
     const KEY_MPV_SUBTITLE_PREFERRED_LANG: &'static str = "mpv-subtitle-preferred-lang"; // i32
     const KEY_MPV_DEFAULT_VOLUME: &'static str = "mpv-default-volume"; // i32
     const KEY_MPV_SHOW_BUFFER_SPEED: &'static str = "mpv-show-buffer-speed"; // bool
-    const KEY_MPV_VIDEO_OUTPUT: &'static str = "mpv-video-output"; // i32
     const KEY_MPV_ACTION_AFTER_VIDEO_END: &'static str = "mpv-action-after-video-end"; // i32
     const KEY_MPV_HWDEC: &'static str = "mpv-hwdec"; // i32
+    const KEY_MPV_GPU_CONTEXT: &'static str = "gpu-context"; // i32
     const PREFERRED_VERSION_DESCRIPTORS: &'static str = "video-version-descriptors"; // String
     const ACCOUNTS: &'static str = "accounts"; // String
     const KEY_MPV_AUDIO_CHANNEL: &'static str = "mpv-audio-channel"; // i32
-    const KEY_MPV_SUBTITLE_SCALE: &'static str = "mpv-subtitle-scale"; // f64
     const KEY_MPV_VIDEO_SCALE: &'static str = "mpv-video-scale"; // i32
     const KEY_MPV_CONFIG_DIR: &'static str = "mpv-config-path"; // String
     const KEY_IS_REFRESH: &'static str = "is-refresh"; // bool
     const KEY_MERGE_RESUME_AND_NEXT_UP: &'static str = "merge-resume-and-next-up"; // bool
+    const KEY_AUTO_SKIP_INTRO_OUTRO: &'static str = "auto-skip-intro-outro"; // bool
     const KEY_DEVICE_UUID: &'static str = "device-uuid"; // String
     const KEY_MAIN_THEME: &'static str = "main-theme"; // i32
     const KEY_WINDOW_WIDTH: &'static str = "window-width"; // i32
     const KEY_WINDOW_HEIGHT: &'static str = "window-height"; // i32
     const KEY_IS_MAXIMIZED: &'static str = "is-maximized"; // bool
     const KEY_IS_FULLSCREEN: &'static str = "is-fullscreen"; // bool
+
+    pub fn gpu_context(&self) -> i32 {
+        self.int(Self::KEY_MPV_GPU_CONTEXT)
+    }
 
     pub fn is_overlay(&self) -> bool {
         self.boolean(Self::KEY_IS_OVERLAY)
@@ -119,12 +138,113 @@ impl Settings {
         self.boolean(Self::KEY_MERGE_RESUME_AND_NEXT_UP)
     }
 
+    pub fn auto_skip_intro_outro(&self) -> bool {
+        self.boolean(Self::KEY_AUTO_SKIP_INTRO_OUTRO)
+    }
+
+    pub fn item_text_display(&self) -> String {
+        match self.string(Self::KEY_ITEM_TEXT_DISPLAY).as_str() {
+            "full" => "full",
+            _ => "compact",
+        }
+        .to_string()
+    }
+
+    pub fn set_item_text_display(&self, item_text_display: &str) -> Result<(), glib::BoolError> {
+        self.set_string(Self::KEY_ITEM_TEXT_DISPLAY, item_text_display)
+    }
+
+    pub fn item_card_style(&self) -> String {
+        match self.string(Self::KEY_ITEM_CARD_STYLE).as_str() {
+            "separated" => "separated",
+            _ => "integrated",
+        }
+        .to_string()
+    }
+
+    pub fn set_item_card_style(&self, item_card_style: &str) -> Result<(), glib::BoolError> {
+        self.set_string(Self::KEY_ITEM_CARD_STYLE, item_card_style)
+    }
+
+    pub fn item_card_style_is_integrated(&self) -> bool {
+        self.item_card_style() == "integrated"
+    }
+
     pub fn mpv_config_dir(&self) -> String {
         self.string(Self::KEY_MPV_CONFIG_DIR).to_string()
     }
 
+    pub fn mpv_subtitle_bold(&self) -> bool {
+        self.boolean(Self::KEY_MPV_SUBTITLE_BOLD)
+    }
+
+    pub fn mpv_subtitle_italic(&self) -> bool {
+        self.boolean(Self::KEY_MPV_SUBTITLE_ITALIC)
+    }
+
+    pub fn mpv_subtitle_justify(&self) -> i32 {
+        self.int(Self::KEY_MPV_SUBTITLE_JUSTIFY)
+    }
+
+    pub fn mpv_subtitle_position(&self) -> i32 {
+        self.int(Self::KEY_MPV_SUBTITLE_POSITION)
+    }
+
+    pub fn mpv_subtitle_size(&self) -> i32 {
+        self.int(Self::KEY_MPV_SUBTITLE_SIZE)
+    }
+
     pub fn mpv_subtitle_scale(&self) -> f64 {
         self.double(Self::KEY_MPV_SUBTITLE_SCALE)
+    }
+
+    pub fn set_mpv_subtitle_font(&self, mpv_subtitle_font: String) -> Result<(), glib::BoolError> {
+        self.set_string(Self::KEY_MPV_SUBTITLE_FONT, &mpv_subtitle_font)
+    }
+
+    pub fn mpv_subtitle_font(&self) -> String {
+        self.string(Self::KEY_MPV_SUBTITLE_FONT).to_string()
+    }
+
+    pub fn mpv_subtitle_border_style(&self) -> i32 {
+        self.int(Self::KEY_MPV_SUBTITLE_BORDER_STYLE)
+    }
+
+    pub fn mpv_subtitle_border_size(&self) -> i32 {
+        self.int(Self::KEY_MPV_SUBTITLE_BORDER_SIZE)
+    }
+
+    pub fn mpv_subtitle_shadow_offset(&self) -> i32 {
+        self.int(Self::KEY_MPV_SUBTITLE_SHADOW_OFFSET)
+    }
+
+    pub fn mpv_subtitle_stretch_image_subs_to_screen(&self) -> bool {
+        self.boolean(Self::KEY_MPV_SUBTITLE_STRETCH_IMAGE_SUBS_TO_SCREEN)
+    }
+
+    pub fn mpv_subtitle_text_color(&self) -> String {
+        self.string(Self::KEY_MPV_SUBTITLE_TEXT_COLOR).to_string()
+    }
+
+    pub fn set_mpv_subtitle_text_color(&self, color: &str) -> Result<(), glib::BoolError> {
+        self.set_string(Self::KEY_MPV_SUBTITLE_TEXT_COLOR, color)
+    }
+
+    pub fn mpv_subtitle_border_color(&self) -> String {
+        self.string(Self::KEY_MPV_SUBTITLE_BORDER_COLOR).to_string()
+    }
+
+    pub fn set_mpv_subtitle_border_color(&self, color: &str) -> Result<(), glib::BoolError> {
+        self.set_string(Self::KEY_MPV_SUBTITLE_BORDER_COLOR, color)
+    }
+
+    pub fn mpv_subtitle_background_color(&self) -> String {
+        self.string(Self::KEY_MPV_SUBTITLE_BACKGROUND_COLOR)
+            .to_string()
+    }
+
+    pub fn set_mpv_subtitle_background_color(&self, color: &str) -> Result<(), glib::BoolError> {
+        self.set_string(Self::KEY_MPV_SUBTITLE_BACKGROUND_COLOR, color)
     }
 
     pub fn mpv_video_scale(&self) -> i32 {
@@ -242,18 +362,6 @@ impl Settings {
         self.int(Self::KEY_LIST_SORT_ORDER)
     }
 
-    pub fn mpv_subtitle_size(&self) -> i32 {
-        self.int(Self::KEY_MPV_SUBTITLE_SIZE)
-    }
-
-    pub fn set_mpv_subtitle_font(&self, mpv_subtitle_font: String) -> Result<(), glib::BoolError> {
-        self.set_string(Self::KEY_MPV_SUBTITLE_FONT, &mpv_subtitle_font)
-    }
-
-    pub fn mpv_subtitle_font(&self) -> String {
-        self.string(Self::KEY_MPV_SUBTITLE_FONT).to_string()
-    }
-
     pub fn mpv_audio_preferred_lang(&self) -> i32 {
         self.int(Self::KEY_MPV_AUDIO_PREFERRED_LANG)
     }
@@ -272,6 +380,7 @@ impl Settings {
             6 => "nob",
             7 => "por",
             8 => "fre",
+            9 => "rus",
             _ => "",
         }
         .to_string()
@@ -289,14 +398,6 @@ impl Settings {
         &self, mpv_show_buffer_speed: bool,
     ) -> Result<(), glib::BoolError> {
         self.set_boolean(Self::KEY_MPV_SHOW_BUFFER_SPEED, mpv_show_buffer_speed)
-    }
-
-    pub fn set_mpv_video_output(&self, mpv_video_output: i32) -> Result<(), glib::BoolError> {
-        self.set_int(Self::KEY_MPV_VIDEO_OUTPUT, mpv_video_output)
-    }
-
-    pub fn mpv_video_output(&self) -> i32 {
-        self.int(Self::KEY_MPV_VIDEO_OUTPUT)
     }
 
     pub fn set_mpv_action_after_video_end(

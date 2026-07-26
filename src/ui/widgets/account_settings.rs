@@ -43,7 +43,10 @@ mod imp {
 
     use glib::subclass::InitializingObject;
 
-    use crate::Window;
+    use crate::{
+        Window,
+        ui::widgets::action_row::AActionRow,
+    };
 
     use super::*;
 
@@ -68,7 +71,13 @@ mod imp {
         #[template_child]
         pub merge_resume_next_up_control: TemplateChild<adw::SwitchRow>,
         #[template_child]
+        pub auto_skip_intro_outro_control: TemplateChild<adw::SwitchRow>,
+        #[template_child]
         pub selectlastcontrol: TemplateChild<adw::SwitchRow>,
+        #[template_child]
+        pub text_display_group: TemplateChild<adw::ToggleGroup>,
+        #[template_child]
+        pub card_style_group: TemplateChild<adw::ToggleGroup>,
         #[template_child]
         pub custom_accent_color_control: TemplateChild<adw::SwitchRow>,
         #[template_child]
@@ -143,6 +152,7 @@ mod imp {
         type ParentType = adw::PreferencesWindow;
 
         fn class_init(klass: &mut Self::Class) {
+            AActionRow::ensure_type();
             klass.bind_template();
             klass.bind_template_instance_callbacks();
             klass.install_action_async(
@@ -255,7 +265,7 @@ impl AccountSettings {
             move |control| {
                 let window = obj.window();
                 window.overlay_sidebar(control.is_active());
-                SETTINGS.set_overlay(control.is_active()).unwrap();
+                let _ = SETTINGS.set_overlay(control.is_active());
             }
         ));
     }
@@ -266,9 +276,7 @@ impl AccountSettings {
         imp.color
             .set_rgba(&RGBA::from_str(&SETTINGS.accent_color_code()).unwrap());
         imp.color.connect_rgba_notify(move |control| {
-            SETTINGS
-                .set_accent_color_code(&control.rgba().to_string())
-                .unwrap();
+            let _ = SETTINGS.set_accent_color_code(&control.rgba().to_string());
         });
     }
 
@@ -295,7 +303,7 @@ impl AccountSettings {
         match filedialog.open_future(Some(&window)).await {
             Ok(file) => {
                 let file_path = file.path().unwrap().display().to_string();
-                SETTINGS.set_root_pic(&file_path).unwrap();
+                let _ = SETTINGS.set_root_pic(&file_path);
                 window.set_rootpic(file);
             }
             Err(_) => self.toast(gettext("No file selected")),
@@ -310,7 +318,7 @@ impl AccountSettings {
             #[weak(rename_to = obj)]
             self,
             move |control| {
-                SETTINGS.set_pic_opacity(control.value() as i32).unwrap();
+                let _ = SETTINGS.set_pic_opacity(control.value() as i32);
                 let window = obj.window();
                 window.set_picopacity(control.value() as i32);
             }
@@ -325,9 +333,7 @@ impl AccountSettings {
             #[weak(rename_to = obj)]
             self,
             move |control| {
-                SETTINGS
-                    .set_background_enabled(control.is_active())
-                    .unwrap();
+                let _ = SETTINGS.set_background_enabled(control.is_active());
                 if !control.is_active() {
                     let window = obj.window();
                     window.clear_pic();
@@ -345,7 +351,7 @@ impl AccountSettings {
                 window.clear_pic();
             }
         ));
-        SETTINGS.set_root_pic("").unwrap();
+        let _ = SETTINGS.set_root_pic("");
     }
 
     pub fn bind_settings(&self) {
@@ -387,6 +393,40 @@ impl AccountSettings {
                 "active",
             )
             .build();
+
+        let action_group = gio::SimpleActionGroup::new();
+
+        let action_text = gio::ActionEntry::builder("gpu-context")
+            .parameter_type(Some(&i32::static_variant_type()))
+            .state(SETTINGS.gpu_context().to_variant())
+            .activate(move |_, action, parameter| {
+                let parameter = parameter
+                    .expect("Could not get parameter.")
+                    .get::<i32>()
+                    .expect("The variant needs to be of type `i32`.");
+
+                SETTINGS.set_int("gpu-context", parameter).unwrap();
+                action.set_state(&parameter.to_variant());
+            })
+            .build();
+
+        action_group.add_action_entries([action_text]);
+        self.insert_action_group("mpv", Some(&action_group));
+
+        imp.text_display_group
+            .set_active_name(Some(SETTINGS.item_text_display().as_str()));
+        imp.card_style_group
+            .set_active_name(Some(SETTINGS.item_card_style().as_str()));
+        imp.text_display_group.connect_active_name_notify(|group| {
+            if let Some(active_name) = group.active_name() {
+                let _ = SETTINGS.set_item_text_display(&active_name);
+            }
+        });
+        imp.card_style_group.connect_active_name_notify(|group| {
+            if let Some(active_name) = group.active_name() {
+                let _ = SETTINGS.set_item_card_style(&active_name);
+            }
+        });
         SETTINGS
             .bind("use-custom-accent-color", &imp.color.get(), "sensitive")
             .build();
@@ -406,26 +446,17 @@ impl AccountSettings {
                 "active",
             )
             .build();
-
-        let action_group = gio::SimpleActionGroup::new();
-
-        let action_vo = gio::ActionEntry::builder("video-output")
-            .parameter_type(Some(&i32::static_variant_type()))
-            .state(SETTINGS.mpv_video_output().to_variant())
-            .activate(move |_, action, parameter| {
-                let parameter = parameter
-                    .expect("Could not get parameter.")
-                    .get::<i32>()
-                    .expect("The variant needs to be of type `i32`.");
-
-                SETTINGS.set_mpv_video_output(parameter).unwrap();
-
-                action.set_state(&parameter.to_variant());
-            })
+        SETTINGS
+            .bind(
+                "auto-skip-intro-outro",
+                &imp.auto_skip_intro_outro_control.get(),
+                "active",
+            )
             .build();
 
-        action_group.add_action_entries([action_vo]);
-        self.insert_action_group("setting", Some(&action_group));
+        if JELLYFIN_CLIENT.session().account.user_id.is_empty() {
+            return;
+        }
 
         spawn(glib::clone!(
             #[weak(rename_to = obj)]
@@ -473,9 +504,7 @@ impl AccountSettings {
         &self, _param: glib::ParamSpec, button: gtk::FontDialogButton,
     ) {
         let font_desc = button.font_desc().unwrap();
-        SETTINGS
-            .set_mpv_subtitle_font(gtk::pango::FontDescription::to_string(&font_desc))
-            .unwrap();
+        let _ = SETTINGS.set_mpv_subtitle_font(gtk::pango::FontDescription::to_string(&font_desc));
     }
 
     #[template_callback]
@@ -742,9 +771,7 @@ impl AccountSettings {
                         .unwrap();
                     descriptors.remove(lr_index);
                     descriptors.insert(index, lr_descriptor.to_owned());
-                    SETTINGS
-                        .set_preferred_version_descriptors(descriptors)
-                        .expect("Failed to set descriptors");
+                    let _ = SETTINGS.set_preferred_version_descriptors(descriptors);
                     obj.refersh_descriptors();
 
                     true
