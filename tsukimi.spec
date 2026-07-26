@@ -1,4 +1,4 @@
-%global fallback_version 26.6.2
+%global fallback_version 26.8.1
 %global pkg_version %{?version_from_tag:%{version_from_tag}}%{!?version_from_tag:%{fallback_version}}
 
 Name:           tsukimi
@@ -21,9 +21,10 @@ BuildRequires:  meson
 BuildRequires:  ninja-build
 BuildRequires:  pkgconfig
 BuildRequires:  python3
-BuildRequires:  rust >= 1.85
+BuildRequires:  rust >= 1.91
 BuildRequires:  pkgconfig(dbus-1)
 BuildRequires:  pkgconfig(epoxy)
+BuildRequires:  pkgconfig(glycin-2) >= 2.0
 BuildRequires:  pkgconfig(gio-2.0) >= 2.76
 BuildRequires:  pkgconfig(glib-2.0) >= 2.76
 BuildRequires:  pkgconfig(gstreamer-1.0) >= 1.16
