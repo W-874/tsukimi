@@ -17,15 +17,17 @@ Source1:        %{name}-%{version}-vendor.tar.zst
 BuildRequires:  cargo
 BuildRequires:  blueprint-compiler
 BuildRequires:  desktop-file-utils
+BuildRequires:  cmake
 BuildRequires:  gcc
 BuildRequires:  gettext
 BuildRequires:  meson
 BuildRequires:  ninja-build
 BuildRequires:  pkgconfig
 BuildRequires:  python3
-BuildRequires:  rust >= 1.91
+BuildRequires:  rust >= 1.92
 BuildRequires:  pkgconfig(dbus-1)
 BuildRequires:  pkgconfig(epoxy)
+BuildRequires:  pkgconfig(fontconfig)
 BuildRequires:  pkgconfig(glycin-2) >= 2.0
 BuildRequires:  pkgconfig(gio-2.0) >= 2.76
 BuildRequires:  pkgconfig(glib-2.0) >= 2.76
@@ -37,9 +39,19 @@ BuildRequires:  pkgconfig(gstreamer-play-1.0) >= 1.16
 BuildRequires:  pkgconfig(gstreamer-plugins-bad-1.0) >= 1.16
 BuildRequires:  pkgconfig(gstreamer-plugins-base-1.0) >= 1.16
 BuildRequires:  pkgconfig(gtk4) >= 4.22
-BuildRequires:  pkgconfig(libadwaita-1) >= 1.8
+BuildRequires:  pkgconfig(gtk4-wayland) >= 4.18
+BuildRequires:  pkgconfig(gtk4-x11) >= 4.18
+BuildRequires:  pkgconfig(lcms2)
+BuildRequires:  pkgconfig(libadwaita-1) >= 1.9
+BuildRequires:  pkgconfig(libseccomp)
 BuildRequires:  pkgconfig(mpv) >= 0.38
 BuildRequires:  pkgconfig(openssl)
+BuildRequires:  pkgconfig(wayland-client)
+BuildRequires:  pkgconfig(x11)
+
+# glycin starts external loaders inside a bubblewrap sandbox.
+Requires:       bubblewrap
+Requires:       glycin-loaders >= 2.0
 
 Conflicts:      tsukimi
 

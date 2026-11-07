@@ -1,9 +1,12 @@
 SPEC := $(if $(spec),$(spec),tsukimi.spec)
+# Override with DNF=true when generating SRPMs locally with prerequisites installed.
+DNF ?= dnf
 
 .PHONY: srpm
 srpm:
-	dnf -y install cargo git-core python3 rpm-build rust zstd
-	name="$$(rpmspec -q --srpm --qf '%{NAME}\n' "$(SPEC)" | head -n1)"; \
+	$(DNF) -y install cargo git-core python3 rpm-build rust zstd
+	set -eu; \
+	name="$$(rpmspec -q --srpm --qf '%{NAME}\n' "$(SPEC)")"; \
 	if [ "$$name" = "tsukimi-git" ]; then \
 		version="$$(python3 -c 'import tomllib; print(tomllib.load(open("crates/tsukimi/Cargo.toml", "rb"))["package"]["version"])')"; \
 		git_date="$$(git log -1 --date=format:%Y%m%d --format=%cd HEAD)"; \
@@ -18,10 +21,12 @@ srpm:
 		fi; \
 	fi; \
 	workdir="$$(mktemp -d)"; \
+	trap 'rm -rf "$$workdir"' EXIT; \
 	mkdir -p "$$workdir/.cargo"; \
 	git archive --format=tar.gz --prefix="$$name-$$version/" -o "$(outdir)/$$name-$$version.tar.gz" HEAD; \
 	cargo vendor --locked "$$workdir/vendor" > "$$workdir/.cargo/config.toml"; \
 	sed -i 's|^directory = \".*\"|directory = \"vendor\"|' "$$workdir/.cargo/config.toml"; \
+	printf '\n[net]\noffline = true\n' >> "$$workdir/.cargo/config.toml"; \
 	tar --zstd -cf "$(outdir)/$$name-$$version-vendor.tar.zst" -C "$$workdir" .cargo vendor; \
 	if [ "$$name" = "tsukimi-git" ]; then \
 		rpmbuild -bs "$(SPEC)" \
@@ -34,5 +39,4 @@ srpm:
 			--define "version_from_tag $$version" \
 			--define "_sourcedir $(outdir)" \
 			--define "_srcrpmdir $(outdir)"; \
-	fi; \
-	rm -rf "$$workdir"
+	fi
