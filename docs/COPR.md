@@ -133,18 +133,21 @@ release tag, carrying the corrected packaging files. For example, starting
 from the committed `copr` branch:
 
 ```sh
-git switch -c copr/release-26.11.1 v26.11.1
+git switch -c copr-release-26.11.1 v26.11.1
 git restore --source=copr -- .copr/Makefile tsukimi.spec tsukimi-git.spec
 git add .copr/Makefile tsukimi.spec tsukimi-git.spec
 git commit -m "Package Tsukimi 26.11.1 for COPR"
-git push -u origin copr/release-26.11.1
+git push -u origin copr-release-26.11.1
 git switch copr
 
 copr-cli buildscm walker874/tsukimi \
   --clone-url https://github.com/W-874/tsukimi.git \
-  --commit copr/release-26.11.1 \
+  --commit copr-release-26.11.1 \
   --type git --method make_srpm --spec tsukimi.spec
 ```
+
+Use a name such as `copr-release-26.11.1`, not `copr/release-26.11.1`:
+Git cannot have both the existing `copr` branch and branches below `copr/`.
 
 Do not select the unmodified upstream tag and assume newer packaging fixes are
 present there. When HEAD is exactly a tag, the generator removes its leading
