@@ -2,3 +2,6 @@
 /i18n
 /.idea
 /backup
+/secret/key
+/scripts
+/crates/lycoric

@@ -13,14 +13,14 @@ build: setup
     meson compile -C {{ builddir }}
 
 install: build
-    meson install -C {{ builddir }}
+    meson install -C {{ builddir }} --no-rebuild
 
 run *ARGS: install
     cd {{ builddir }} && \
         env \
             GSETTINGS_SCHEMA_DIR="$PWD/dev-prefix/share/glib-2.0/schemas" \
             XDG_DATA_DIRS="$PWD/dev-prefix/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}" \
-            ./src/tsukimi {{ ARGS }}
+            ./crates/tsukimi/src/tsukimi {{ ARGS }}
 
 update-i18n:
     meson compile -C {{ builddir }} tsukimi-pot
